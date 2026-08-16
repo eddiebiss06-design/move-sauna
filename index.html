@@ -589,33 +589,60 @@
 
   // ---------- Rendering: admin view ----------
 
+  let adminFormBuilt = false;
+
   function renderAdminView() {
-    let html = `
-      <div class="admin-form">
-        <div class="section-label" style="margin-top:0">Add a time</div>
-        <div class="form-row">
-          <div>
-            <label for="newDate">Date</label>
-            <input type="date" id="newDate" />
+    if (!adminFormBuilt) {
+      app.innerHTML = `
+        <div class="admin-form">
+          <div class="section-label" style="margin-top:0">Add a time</div>
+          <div class="form-row">
+            <div>
+              <label for="newDate">Date</label>
+              <input type="date" id="newDate" />
+            </div>
+            <div>
+              <label for="newStart">Starts</label>
+              <input type="time" id="newStart" value="18:00" />
+            </div>
+            <div>
+              <label for="newEnd">Ends</label>
+              <input type="time" id="newEnd" value="19:00" />
+            </div>
           </div>
-          <div>
-            <label for="newStart">Starts</label>
-            <input type="time" id="newStart" value="18:00" />
-          </div>
-          <div>
-            <label for="newEnd">Ends</label>
-            <input type="time" id="newEnd" value="19:00" />
-          </div>
+          <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
+          <div class="notify-note">Requests will push a notification to the ntfy app if you've subscribed to the topic <strong>${NTFY_TOPIC}</strong>.</div>
         </div>
-        <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
-        <div class="notify-note">Requests will push a notification to the ntfy app if you've subscribed to the topic <strong>${NTFY_TOPIC}</strong>.</div>
-      </div>
-    `;
+        <div id="adminSlotList"></div>
+      `;
+
+      const dateInput = document.getElementById('newDate');
+      dateInput.min = todayISO();
+      dateInput.value = todayISO();
+
+      const startInput = document.getElementById('newStart');
+      startInput.addEventListener('input', () => {
+        if (startInput.value) {
+          document.getElementById('newEnd').value = addOneHour(startInput.value);
+        }
+      });
+
+      document.getElementById('addSlotBtn').addEventListener('click', addSlot);
+      adminFormBuilt = true;
+    }
+
+    renderAdminSlotList();
+  }
+
+  function renderAdminSlotList() {
+    const listEl = document.getElementById('adminSlotList');
+    if (!listEl) return;
 
     const sorted = sortSlots(slots);
     const requested = sorted.filter(s => s.status === 'requested');
     const rest = sorted.filter(s => s.status !== 'requested');
 
+    let html = '';
     if (!loaded) {
       html += `<div class="empty-state" style="margin-top:24px;">Loading&hellip;</div>`;
     } else {
@@ -633,23 +660,11 @@
       }
     }
 
-    app.innerHTML = html;
-
-    const dateInput = document.getElementById('newDate');
-    dateInput.min = todayISO();
-
-    const startInput = document.getElementById('newStart');
-    startInput.addEventListener('input', () => {
-      if (startInput.value) {
-        document.getElementById('newEnd').value = addOneHour(startInput.value);
-      }
-    });
-
-    document.getElementById('addSlotBtn').addEventListener('click', addSlot);
-    app.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-approve'), 'booked')));
-    app.querySelectorAll('[data-deny]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-deny'), 'open', true)));
-    app.querySelectorAll('[data-reopen]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-reopen'), 'open', true)));
-    app.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteSlot(b.getAttribute('data-delete'))));
+    listEl.innerHTML = html;
+    listEl.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-approve'), 'booked')));
+    listEl.querySelectorAll('[data-deny]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-deny'), 'open', true)));
+    listEl.querySelectorAll('[data-reopen]').forEach(b => b.addEventListener('click', () => setStatus(b.getAttribute('data-reopen'), 'open', true)));
+    listEl.querySelectorAll('[data-delete]').forEach(b => b.addEventListener('click', () => deleteSlot(b.getAttribute('data-delete'))));
   }
 
   function adminSlotCard(s) {
