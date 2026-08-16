@@ -372,6 +372,10 @@
 
   const isAdmin = window.location.hash.replace('#','').toLowerCase() === 'admin';
   const NTFY_TOPIC = 'movewellness-sauna-req-4k9p2z';
+
+  // Typing a URL that only changes the #hash often doesn't trigger a full
+  // page reload in the browser. Force one so the admin check re-runs.
+  window.addEventListener('hashchange', () => window.location.reload());
   let slots = [];
   let loaded = false;
 
