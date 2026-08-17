@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   :root {
     --paper: #EFE9DD;
@@ -336,6 +337,83 @@
     margin-top: 16px;
     line-height: 1.5;
   }
+
+  /* ---------- Admin tabs + calendar ---------- */
+
+  .admin-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    color: var(--ink-dim);
+    padding: 10px 4px;
+    margin-right: 18px;
+    font-size: 13.5px;
+  }
+  .tab-btn.active { color: var(--ink); border-bottom-color: var(--sage); }
+  .tab-btn:hover:not(.active) { color: var(--ink); }
+
+  .cal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .cal-month-label {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+  .cal-dayname {
+    text-align: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    padding-bottom: 4px;
+  }
+  .cal-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-size: 13px;
+    border-radius: 10px;
+    cursor: default;
+    color: var(--ink-dim);
+  }
+  .cal-cell.empty { visibility: hidden; }
+  .cal-cell.has-booking {
+    cursor: pointer;
+    color: var(--ink);
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    font-weight: 600;
+  }
+  .cal-cell.has-booking:hover { border-color: var(--sage-light); }
+  .cal-cell.selected { background: var(--sage); color: #F5F2E9; border-color: var(--sage); }
+  .cal-dot {
+    position: absolute;
+    bottom: 5px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--clay);
+  }
+  .cal-cell.selected .cal-dot { background: #F5F2E9; }
 </style>
 </head>
 <body>
@@ -372,6 +450,14 @@
 
   const isAdmin = window.location.hash.replace('#','').toLowerCase() === 'admin';
   const NTFY_TOPIC = 'movewellness-sauna-req-4k9p2z';
+
+  // Fill these in once you've created an EmailJS account, service, and template.
+  const EMAILJS_PUBLIC_KEY = 'ibvztJxENgRHqnr2E';
+  const EMAILJS_SERVICE_ID = 'service_i4il3ll';
+  const EMAILJS_TEMPLATE_ID = 'template_bk1orlt';
+  if (typeof emailjs !== 'undefined' && EMAILJS_PUBLIC_KEY !== 'PASTE_YOUR_PUBLIC_KEY') {
+    emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+  }
 
   // Typing a URL that only changes the #hash often doesn't trigger a full
   // page reload in the browser. Force one so the admin check re-runs.
@@ -451,6 +537,16 @@
       body: message,
       headers: { 'Title': 'New sauna request' }
     }).catch(() => { /* silent fail, request is still saved either way */ });
+  }
+
+  function sendConfirmationEmail(slot) {
+    if (typeof emailjs === 'undefined' || !EMAILJS_SERVICE_ID) return;
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: slot.requesterEmail,
+      to_name: slot.requesterName,
+      booking_date: fmtDate(slot.date),
+      booking_time: `${fmtTime(slot.start)} - ${fmtTime(slot.end)}`
+    }).catch(() => { /* silent fail, booking is still confirmed either way */ });
   }
 
   function showToast(msg) {
@@ -545,6 +641,8 @@
         <p>${fmtDate(slot.date)}, ${fmtTime(slot.start)} &ndash; ${fmtTime(slot.end)}</p>
         <label for="reqName">Your name</label>
         <input type="text" id="reqName" placeholder="First and last name" autocomplete="name" />
+        <label for="reqEmail">Your email</label>
+        <input type="email" id="reqEmail" placeholder="you@example.com" autocomplete="email" />
         <div class="modal-actions">
           <button class="btn-ghost" data-cancel>Cancel</button>
           <button class="btn-sage" data-submit>Send request</button>
@@ -553,6 +651,7 @@
     `;
     document.body.appendChild(backdrop);
     const nameInput = backdrop.querySelector('#reqName');
+    const emailInput = backdrop.querySelector('#reqEmail');
     nameInput.focus();
 
     backdrop.querySelector('[data-cancel]').addEventListener('click', () => backdrop.remove());
@@ -560,9 +659,15 @@
 
     backdrop.querySelector('[data-submit]').addEventListener('click', async () => {
       const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
       if (!name) {
         nameInput.style.outline = '2px solid var(--clay)';
         nameInput.focus();
+        return;
+      }
+      if (!email || !email.includes('@')) {
+        emailInput.style.outline = '2px solid var(--clay)';
+        emailInput.focus();
         return;
       }
       const submitBtn = backdrop.querySelector('[data-submit]');
@@ -577,6 +682,7 @@
       }
       fresh.status = 'requested';
       fresh.requesterName = name;
+      fresh.requesterEmail = email;
       const ok = await saveSlots();
       backdrop.remove();
       if (ok) {
@@ -590,30 +696,40 @@
   // ---------- Rendering: admin view ----------
 
   let adminFormBuilt = false;
+  let calendarMonth = new Date();
+  calendarMonth.setDate(1);
+  let selectedCalDate = null;
 
   function renderAdminView() {
     if (!adminFormBuilt) {
       app.innerHTML = `
-        <div class="admin-form">
-          <div class="section-label" style="margin-top:0">Add a time</div>
-          <div class="form-row">
-            <div>
-              <label for="newDate">Date</label>
-              <input type="date" id="newDate" />
-            </div>
-            <div>
-              <label for="newStart">Starts</label>
-              <input type="time" id="newStart" value="18:00" />
-            </div>
-            <div>
-              <label for="newEnd">Ends</label>
-              <input type="time" id="newEnd" value="19:00" />
-            </div>
-          </div>
-          <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
-          <div class="notify-note">Requests will push a notification to the ntfy app if you've subscribed to the topic <strong>${NTFY_TOPIC}</strong>.</div>
+        <div class="admin-tabs">
+          <button class="tab-btn active" data-tab="manage">Manage</button>
+          <button class="tab-btn" data-tab="calendar">Calendar</button>
         </div>
-        <div id="adminSlotList"></div>
+        <div id="adminManagePane">
+          <div class="admin-form">
+            <div class="section-label" style="margin-top:0">Add a time</div>
+            <div class="form-row">
+              <div>
+                <label for="newDate">Date</label>
+                <input type="date" id="newDate" />
+              </div>
+              <div>
+                <label for="newStart">Starts</label>
+                <input type="time" id="newStart" value="18:00" />
+              </div>
+              <div>
+                <label for="newEnd">Ends</label>
+                <input type="time" id="newEnd" value="19:00" />
+              </div>
+            </div>
+            <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
+            <div class="notify-note">Requests will push a notification to the ntfy app if you've subscribed to the topic <strong>${NTFY_TOPIC}</strong>.</div>
+          </div>
+          <div id="adminSlotList"></div>
+        </div>
+        <div id="adminCalendarPane" style="display:none"></div>
       `;
 
       const dateInput = document.getElementById('newDate');
@@ -628,10 +744,99 @@
       });
 
       document.getElementById('addSlotBtn').addEventListener('click', addSlot);
+
+      app.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          app.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          const tab = btn.getAttribute('data-tab');
+          document.getElementById('adminManagePane').style.display = tab === 'manage' ? '' : 'none';
+          document.getElementById('adminCalendarPane').style.display = tab === 'calendar' ? '' : 'none';
+          if (tab === 'calendar') renderCalendar();
+        });
+      });
+
       adminFormBuilt = true;
     }
 
     renderAdminSlotList();
+    if (document.getElementById('adminCalendarPane').style.display !== 'none') {
+      renderCalendar();
+    }
+  }
+
+  function renderCalendar() {
+    const pane = document.getElementById('adminCalendarPane');
+    if (!pane) return;
+
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const monthLabel = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const startWeekday = new Date(year, month, 1).getDay();
+
+    const booked = slots.filter(s => s.status === 'booked');
+    const bookedDates = new Set(booked.map(s => s.date));
+
+    const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    let cellsHtml = dayNames.map(d => `<div class="cal-dayname">${d}</div>`).join('');
+
+    for (let i = 0; i < startWeekday; i++) {
+      cellsHtml += `<div class="cal-cell empty"></div>`;
+    }
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      const hasBooking = bookedDates.has(dateStr);
+      const isSelected = dateStr === selectedCalDate;
+      cellsHtml += `<div class="cal-cell ${hasBooking ? 'has-booking' : ''} ${isSelected ? 'selected' : ''}" data-cal-day="${dateStr}">${day}${hasBooking ? '<span class="cal-dot"></span>' : ''}</div>`;
+    }
+
+    let detailHtml = '';
+    if (selectedCalDate) {
+      const dayBookings = booked.filter(s => s.date === selectedCalDate).sort((a, b) => a.start.localeCompare(b.start));
+      detailHtml += `<div class="date-heading">${fmtDate(selectedCalDate)}</div>`;
+      if (dayBookings.length === 0) {
+        detailHtml += `<div class="empty-state">No confirmed bookings this day.</div>`;
+      } else {
+        dayBookings.forEach(s => {
+          detailHtml += `
+            <div class="slot-card">
+              <div>
+                <div class="slot-time">${fmtTime(s.start)} &ndash; ${fmtTime(s.end)}</div>
+                <div class="requester-name">${escapeHtml(s.requesterName || '')}${s.requesterEmail ? ' · ' + escapeHtml(s.requesterEmail) : ''}</div>
+              </div>
+            </div>`;
+        });
+      }
+    } else {
+      detailHtml = `<div class="empty-state">Tap a highlighted day to see its bookings.</div>`;
+    }
+
+    pane.innerHTML = `
+      <div class="cal-header">
+        <button class="btn-ghost btn-small" data-cal-prev>&lsaquo;</button>
+        <div class="cal-month-label">${monthLabel}</div>
+        <button class="btn-ghost btn-small" data-cal-next>&rsaquo;</button>
+      </div>
+      <div class="cal-grid">${cellsHtml}</div>
+      <div class="section-label">Confirmed bookings</div>
+      <div id="calDayDetail">${detailHtml}</div>
+    `;
+
+    pane.querySelector('[data-cal-prev]').addEventListener('click', () => {
+      calendarMonth.setMonth(calendarMonth.getMonth() - 1);
+      renderCalendar();
+    });
+    pane.querySelector('[data-cal-next]').addEventListener('click', () => {
+      calendarMonth.setMonth(calendarMonth.getMonth() + 1);
+      renderCalendar();
+    });
+    pane.querySelectorAll('.cal-cell[data-cal-day]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        selectedCalDate = cell.getAttribute('data-cal-day');
+        renderCalendar();
+      });
+    });
   }
 
   function renderAdminSlotList() {
@@ -685,7 +890,7 @@
         <div>
           <div class="slot-time">${fmtDate(s.date)} · ${fmtTime(s.start)}&ndash;${fmtTime(s.end)}</div>
           <div class="slot-status status-${s.status}"><span class="dot ${s.status}"></span>${label}</div>
-          ${s.requesterName ? `<div class="requester-name">${escapeHtml(s.requesterName)}</div>` : ''}
+          ${s.requesterName ? `<div class="requester-name">${escapeHtml(s.requesterName)}${s.requesterEmail ? ' · ' + escapeHtml(s.requesterEmail) : ''}</div>` : ''}
         </div>
         <div class="admin-slot-actions">${actions}</div>
       </div>
@@ -714,7 +919,7 @@
       showToast('End time has to be after start time.');
       return;
     }
-    slots.push({ id: uid(), date, start, end, status: 'open', requesterName: null });
+    slots.push({ id: uid(), date, start, end, status: 'open', requesterName: null, requesterEmail: null });
     const ok = await saveSlots();
     if (ok) showToast('Time added.');
   }
@@ -723,9 +928,17 @@
     const s = slots.find(x => x.id === id);
     if (!s) return;
     s.status = status;
-    if (clearName) s.requesterName = null;
+    if (clearName) {
+      s.requesterName = null;
+      s.requesterEmail = null;
+    }
     const ok = await saveSlots();
-    if (ok) showToast(status === 'booked' ? 'Approved.' : status === 'open' ? 'Reopened.' : 'Updated.');
+    if (ok) {
+      showToast(status === 'booked' ? 'Approved.' : status === 'open' ? 'Reopened.' : 'Updated.');
+      if (status === 'booked' && s.requesterEmail) {
+        sendConfirmationEmail(s);
+      }
+    }
   }
 
   async function deleteSlot(id) {
