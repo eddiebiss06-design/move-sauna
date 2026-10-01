@@ -521,6 +521,38 @@
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
   }
 
+  function getNextDefaultSlot(selectedDate) {
+    const daySlots = slots.filter(s => s.date === selectedDate);
+    if (daySlots.length === 0) {
+      return { start: '18:00', end: '18:50' };
+    }
+    
+    // Find the latest slot ending time on this date
+    let maxEnd = '00:00';
+    daySlots.forEach(s => {
+      if (s.end > maxEnd) maxEnd = s.end;
+    });
+
+    const [h, m] = maxEnd.split(':').map(Number);
+    // Move to top of next hour relative to the end time
+    const nextStartH = (h + (m > 0 ? 1 : 0)) % 24;
+    const startStr = `${String(nextStartH).padStart(2, '0')}:00`;
+    const endStr = add50Minutes(startStr);
+    
+    return { start: startStr, end: endStr };
+  }
+
+  function updateAdminFormTimeDefaults() {
+    const dateInput = document.getElementById('newDate');
+    const startInput = document.getElementById('newStart');
+    const endInput = document.getElementById('newEnd');
+    if (!dateInput || !startInput || !endInput) return;
+
+    const defaults = getNextDefaultSlot(dateInput.value);
+    startInput.value = defaults.start;
+    endInput.value = defaults.end;
+  }
+
   async function saveSlots() {
     try {
       await setDoc(slotsDocRef, { slots });
@@ -778,11 +810,11 @@
               </div>
               <div>
                 <label for="newStart">Starts</label>
-                <input type="time" id="newStart" value="18:00" />
+                <input type="time" id="newStart" />
               </div>
               <div>
                 <label for="newEnd">Ends</label>
-                <input type="time" id="newEnd" value="18:50" />
+                <input type="time" id="newEnd" />
               </div>
             </div>
             <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
@@ -796,6 +828,10 @@
       const dateInput = document.getElementById('newDate');
       dateInput.min = todayISO();
       dateInput.value = todayISO();
+
+      updateAdminFormTimeDefaults();
+
+      dateInput.addEventListener('change', updateAdminFormTimeDefaults);
 
       const startInput = document.getElementById('newStart');
       startInput.addEventListener('input', () => {
@@ -818,6 +854,8 @@
       });
 
       adminFormBuilt = true;
+    } else {
+      updateAdminFormTimeDefaults();
     }
 
     renderAdminSlotList();
@@ -984,7 +1022,10 @@
     }
     slots.push({ id: uid(), date, start, end, status: 'open', requesterName: null, requesterEmail: null, guestNames: [] });
     const ok = await saveSlots();
-    if (ok) showToast('Time added.');
+    if (ok) {
+      showToast('Time added.');
+      updateAdminFormTimeDefaults();
+    }
   }
 
   async function setStatus(id, status, clearName) {
