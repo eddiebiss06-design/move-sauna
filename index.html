@@ -467,7 +467,6 @@
   const isAdmin = window.location.hash.replace('#','').toLowerCase() === 'admin';
   const NTFY_TOPIC = 'movewellness-sauna-req-4k9p2z';
 
-  // Fill these in once you've created an EmailJS account, service, and template.
   const EMAILJS_PUBLIC_KEY = 'ibvztJxENgRHqnr2E';
   const EMAILJS_SERVICE_ID = 'service_i4il3ll';
   const EMAILJS_TEMPLATE_ID = 'template_bk1orlt';
@@ -475,8 +474,6 @@
     emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
   }
 
-  // Typing a URL that only changes the #hash often doesn't trigger a full
-  // page reload in the browser. Force one so the admin check re-runs.
   window.addEventListener('hashchange', () => window.location.reload());
   let slots = [];
   let loaded = false;
@@ -516,9 +513,9 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function addOneHour(timeStr) {
+  function add50Minutes(timeStr) {
     const [h, m] = timeStr.split(':').map(Number);
-    const total = (h * 60 + m + 60) % (24 * 60);
+    const total = (h * 60 + m + 50) % (24 * 60);
     const newH = Math.floor(total / 60);
     const newM = total % 60;
     return `${String(newH).padStart(2, '0')}:${String(newM).padStart(2, '0')}`;
@@ -534,10 +531,26 @@
     }
   }
 
+  async function cleanupPastSlots(rawSlots) {
+    const now = new Date();
+    const validSlots = rawSlots.filter(s => {
+      const slotEndDateTime = new Date(`${s.date}T${s.end}:00`);
+      return slotEndDateTime > now;
+    });
+
+    if (validSlots.length !== rawSlots.length) {
+      slots = validSlots;
+      await saveSlots();
+    } else {
+      slots = validSlots;
+    }
+  }
+
   // Live connection: fires immediately with current data, then again
-  // any time anyone (you or a guest) changes it, on every open tab.
-  onSnapshot(slotsDocRef, (snap) => {
-    slots = snap.exists() && snap.data().slots ? snap.data().slots : [];
+  // any time anyone changes it.
+  onSnapshot(slotsDocRef, async (snap) => {
+    const rawSlots = snap.exists() && snap.data().slots ? snap.data().slots : [];
+    await cleanupPastSlots(rawSlots);
     loaded = true;
     render();
   }, () => {
@@ -547,12 +560,11 @@
   });
 
   function notifyDad(message) {
-    // Fire-and-forget push notification, no keys involved, safe for client-side code.
     fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
       method: 'POST',
       body: message,
       headers: { 'Title': 'New sauna request' }
-    }).catch(() => { /* silent fail, request is still saved either way */ });
+    }).catch(() => {});
   }
 
   function sendConfirmationEmail(slot) {
@@ -562,7 +574,7 @@
       to_name: slot.requesterName,
       booking_date: fmtDate(slot.date),
       booking_time: `${fmtTime(slot.start)} - ${fmtTime(slot.end)}`
-    }).catch(() => { /* silent fail, booking is still confirmed either way */ });
+    }).catch(() => {});
   }
 
   function showToast(msg) {
@@ -587,12 +599,7 @@
   // ---------- Rendering: requester view ----------
 
   function renderRequesterView() {
-    const sorted = sortSlots(slots).filter(s => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      return new Date(s.date + 'T00:00:00') >= today;
-    });
-
+    const sorted = sortSlots(slots);
     const open = sorted.filter(s => s.status === 'open');
     const taken = sorted.filter(s => s.status !== 'open');
 
@@ -775,7 +782,7 @@
               </div>
               <div>
                 <label for="newEnd">Ends</label>
-                <input type="time" id="newEnd" value="19:00" />
+                <input type="time" id="newEnd" value="18:50" />
               </div>
             </div>
             <button class="btn-sage" id="addSlotBtn" style="margin-top:8px;">Add time slot</button>
@@ -793,7 +800,7 @@
       const startInput = document.getElementById('newStart');
       startInput.addEventListener('input', () => {
         if (startInput.value) {
-          document.getElementById('newEnd').value = addOneHour(startInput.value);
+          document.getElementById('newEnd').value = add50Minutes(startInput.value);
         }
       });
 
