@@ -259,6 +259,20 @@
 
   .modal label { margin-top: 2px; }
 
+  .guest-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .guest-row .guest-input { margin-bottom: 0; flex: 1; }
+  .guest-row .guest-remove {
+    padding: 8px 12px;
+    font-size: 16px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
   .modal-actions { display: flex; gap: 10px; margin-top: 6px; }
   .modal-actions button { flex: 1; }
 
@@ -635,6 +649,9 @@
     const slot = slots.find(s => s.id === slotId);
     if (!slot) return;
 
+    const MAX_GUESTS = 3;
+    let guestCount = 0;
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.innerHTML = `
@@ -645,6 +662,8 @@
         <input type="text" id="reqName" placeholder="First and last name" autocomplete="name" />
         <label for="reqEmail">Your email</label>
         <input type="email" id="reqEmail" placeholder="you@example.com" autocomplete="email" />
+        <div id="guestList"></div>
+        <button type="button" class="btn-ghost btn-small" id="addGuestBtn" style="margin-bottom: 16px;">+ Add guest</button>
         <div class="modal-actions">
           <button class="btn-ghost" data-cancel>Cancel</button>
           <button class="btn-sage" data-submit>Send request</button>
@@ -654,7 +673,35 @@
     document.body.appendChild(backdrop);
     const nameInput = backdrop.querySelector('#reqName');
     const emailInput = backdrop.querySelector('#reqEmail');
+    const guestList = backdrop.querySelector('#guestList');
+    const addGuestBtn = backdrop.querySelector('#addGuestBtn');
     nameInput.focus();
+
+    addGuestBtn.addEventListener('click', () => {
+      if (guestCount >= MAX_GUESTS) return;
+      guestCount++;
+      const row = document.createElement('div');
+      row.className = 'guest-row';
+      row.innerHTML = `
+        <input type="text" class="guest-input" placeholder="Guest ${guestCount} name" />
+        <button type="button" class="btn-ghost btn-small guest-remove" aria-label="Remove guest">&times;</button>
+      `;
+      guestList.appendChild(row);
+      row.querySelector('.guest-input').focus();
+      row.querySelector('.guest-remove').addEventListener('click', () => {
+        row.remove();
+        guestCount--;
+        addGuestBtn.style.display = '';
+        updateGuestPlaceholders();
+      });
+      if (guestCount >= MAX_GUESTS) addGuestBtn.style.display = 'none';
+    });
+
+    function updateGuestPlaceholders() {
+      guestList.querySelectorAll('.guest-input').forEach((input, i) => {
+        input.placeholder = `Guest ${i + 1} name`;
+      });
+    }
 
     backdrop.querySelector('[data-cancel]').addEventListener('click', () => backdrop.remove());
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
@@ -662,6 +709,9 @@
     backdrop.querySelector('[data-submit]').addEventListener('click', async () => {
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
+      const guestNames = Array.from(guestList.querySelectorAll('.guest-input'))
+        .map(i => i.value.trim())
+        .filter(Boolean);
       if (!name) {
         nameInput.style.outline = '2px solid var(--clay)';
         nameInput.focus();
@@ -685,11 +735,13 @@
       fresh.status = 'requested';
       fresh.requesterName = name;
       fresh.requesterEmail = email;
+      fresh.guestNames = guestNames;
       const ok = await saveSlots();
       backdrop.remove();
       if (ok) {
         showToast('Request sent. We\'ll confirm it soon.');
-        notifyDad(`${name} wants ${fmtDate(fresh.date)}, ${fmtTime(fresh.start)}-${fmtTime(fresh.end)}`);
+        const guestNote = guestNames.length ? ` +${guestNames.length} guest${guestNames.length > 1 ? 's' : ''}` : '';
+        notifyDad(`${name} wants ${fmtDate(fresh.date)}, ${fmtTime(fresh.start)}-${fmtTime(fresh.end)}${guestNote}`);
       }
       render();
     });
@@ -806,6 +858,7 @@
               <div>
                 <div class="slot-time">${fmtTime(s.start)} &ndash; ${fmtTime(s.end)}</div>
                 <div class="requester-name">${escapeHtml(s.requesterName || '')}${s.requesterEmail ? ' · ' + escapeHtml(s.requesterEmail) : ''}</div>
+                ${s.guestNames && s.guestNames.length ? `<div class="requester-name">Guests: ${s.guestNames.map(escapeHtml).join(', ')}</div>` : ''}
               </div>
             </div>`;
         });
@@ -893,6 +946,7 @@
           <div class="slot-time">${fmtDate(s.date)} · ${fmtTime(s.start)}&ndash;${fmtTime(s.end)}</div>
           <div class="slot-status status-${s.status}"><span class="dot ${s.status}"></span>${label}</div>
           ${s.requesterName ? `<div class="requester-name">${escapeHtml(s.requesterName)}${s.requesterEmail ? ' · ' + escapeHtml(s.requesterEmail) : ''}</div>` : ''}
+          ${s.guestNames && s.guestNames.length ? `<div class="requester-name">Guests: ${s.guestNames.map(escapeHtml).join(', ')}</div>` : ''}
         </div>
         <div class="admin-slot-actions">${actions}</div>
       </div>
@@ -921,7 +975,7 @@
       showToast('End time has to be after start time.');
       return;
     }
-    slots.push({ id: uid(), date, start, end, status: 'open', requesterName: null, requesterEmail: null });
+    slots.push({ id: uid(), date, start, end, status: 'open', requesterName: null, requesterEmail: null, guestNames: [] });
     const ok = await saveSlots();
     if (ok) showToast('Time added.');
   }
@@ -933,6 +987,7 @@
     if (clearName) {
       s.requesterName = null;
       s.requesterEmail = null;
+      s.guestNames = [];
     }
     const ok = await saveSlots();
     if (ok) {
